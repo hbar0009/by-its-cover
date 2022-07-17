@@ -1,6 +1,5 @@
 # imports
 import os
-import tqdm
 import torch
 import torch.nn as nn
 import torchvision
@@ -16,47 +15,34 @@ from torchvision.transforms import ToTensor
 # general config
 matplotlib.rcParams['figure.facecolor'] = '#ffffff'
 
-random_seed = 42
-torch.manual_seed(random_seed); # set a random seed for replicable results
-
 
 # defining our model
 class CNNModel(nn.Module):
     def __init__(self, output_size):
         super(CNNModel, self).__init__()
-        self.input_layer = nn.Conv2d(3, 25, kernel_size=3, padding=1)
+        self.input_layer = nn.Conv2d(3, 7, kernel_size=5)
         self.maxpool_layer = nn.MaxPool2d(2, 2)
-        self.conv_layer_2 = nn.Conv2d(25, 50, kernel_size=3, padding=1)
-        self.conv_layer_3 = nn.Conv2d(50, 125, kernel_size=3, padding=1)
-        self.conv_layer_4 = nn.Conv2d(125, 100, kernel_size=3, padding=1)
-        self.conv_layer_5 = nn.Conv2d(100, 150, kernel_size=3, padding=1)
-        self.conv_layer_6 = nn.Conv2d(150, 150, kernel_size=3, padding=1)
-        self.conv_layer_7 = nn.Conv2d(150, 25, kernel_size=3, padding=1)
-        self.linear_layer_1 = nn.Linear(25*127*75, 1024)
-        self.linear_layer_2 = nn.Linear(1024, 512)
-        self.output_layer = nn.Linear(512, output_size)
+        self.conv_layer_2 = nn.Conv2d(7, 14, kernel_size=5)
+        self.conv_layer_3 = nn.Conv2d(14, 28, kernel_size=5)
+        self.linear_layer_1 = nn.Linear(28*5*5, 512)
+        self.linear_layer_2 = nn.Linear(512, 64)
+        self.output_layer = nn.Linear(64, output_size)
 
     def forward(self, x):
-        x = self.input_layer(x)
-        x = nn.functional.relu(x)
-        x = self.conv_layer_2(x)
+        x = self.input_layer(x) # 71
         x = nn.functional.relu(x)
 
-        x = self.maxpool_layer(x)
+        x = self.maxpool_layer(x) # 35
 
-        x = self.conv_layer_3(x)
+        x = self.conv_layer_2(x) # 31
         x = nn.functional.relu(x)
-        x = self.conv_layer_4(x)
-        x = nn.functional.relu()
 
-        x = self.maxpool_layer(x)
+        x = self.maxpool_layer(x) # 15
 
-        x = self.conv_layer_5(x)
+        x = self.conv_layer_3(x) # 11
         x = nn.functional.relu(x)
-        x = self.conv_layer_6(x)
-        x = nn.functional.relu(x)
-        x = self.conv_layer_7(x)
-        x = nn.functional.relu(x)
+
+        x = self.maxpool_layer(x) # 5
 
         x = x.flatten(start_dim=1)
         x = self.linear_layer_1(x)
@@ -73,23 +59,21 @@ class CNNModel(nn.Module):
 def train(model, train_loader, loss_fn, optimizer, device):
     model.train() # put model into training mode
     running_loss = 0
-    with tqdm(total=len(train_loader)) as pbar:
-        for i, data in enumerate(train_loader, 0): # loop through all training data
-            inputs, labels = data # seperate out our inputs and outputs (labels)
-            inputs, labels = inputs.to(device), labels.to(device) # put data on GPU
 
-            # forward + backward + optimize
-            optimizer.zero_grad() # clear the gradients in model parameters
-            outputs = model(inputs) # forward pass, get predictions
-            loss = loss_fn(outputs, labels) # calculate loss from predictions
-            loss.backward() # calculate gradient wrt loss for all parameters in model that have requires_grad=True
-            optimizer.step() # iterate over all parameters in the model which have requires_grad=True and update their weights
+    for i, data in enumerate(train_loader, 0): # loop through all training data
+        inputs, labels = data # seperate out our inputs and outputs (labels)
+        inputs, labels = inputs.to(device), labels.to(device) # put data on GPU
 
-            running_loss += loss.item() # sum total loss in current epoch for printing later
+        # forward + backward + optimize
+        optimizer.zero_grad() # clear the gradients in model parameters
+        outputs = model(inputs) # forward pass, get predictions
+        loss = loss_fn(outputs, labels) # calculate loss from predictions
+        loss.backward() # calculate gradient wrt loss for all parameters in model that have requires_grad=True
+        optimizer.step() # iterate over all parameters in the model which have requires_grad=True and update their weights
 
-            pbar.update(1) # increment progress bar
+        running_loss += loss.item() # sum total loss in current epoch for printing later
         
-        return running_loss/len(train_loader) # return the total training loss for the epoch
+    return running_loss/len(train_loader) # return the total training loss for the epoch
 
 
 # validation function from workshop 3
@@ -101,38 +85,35 @@ def validation(model, val_loader, loss_fn, device):
     correct = 0
 
     with torch.no_grad(): # save memory by not saving unused gradients
-        with tqdm(total=len(val_loader)) as pbar:
-            for images, labels in iter(val_loader):
-                images, labels = images.to(device), labels.to(device) # put data on GPU
-                outputs = model(images) # pass image to model, and calculate the class probability prediction
+        for images, labels in iter(val_loader):
+            images, labels = images.to(device), labels.to(device) # put data on GPU
+            outputs = model(images) # pass image to model, and calculate the class probability prediction
 
-                val_loss = loss_fn(outputs, labels) # calculates val_loss from model predictions and true labels
-                running_loss += val_loss.item()
-                _, predicted = torch.max(outputs, 1) # turn the class predictions into labels
-                total += labels.size(0) # sum total number of predictions
-                correct += (predicted == labels).sum.item() # sum number of correct predictions
+            val_loss = loss_fn(outputs, labels) # calculates val_loss from model predictions and true labels
+            running_loss += val_loss.item()
+            _, predicted = torch.max(outputs, 1) # turn the class predictions into labels
+            total += labels.size(0) # sum total number of predictions
+            correct += (predicted == labels).sum().item() # sum number of correct predictions
 
-                pbar.update(1) # increment progress bar
-
-            return running_loss/len(val_loader), correct/total # return loss and accuracy
+        return running_loss/len(val_loader), correct/total # return loss and accuracy
 
 
 # importing dataset and applying transforms
-train_ds = ImageFolder('/data/train',
-                      transform=transforms.Compose([transforms.Resize([125, 75]),
+train_ds = ImageFolder('data/train',
+                      transform=transforms.Compose([transforms.Resize([75, 75]),
                                                     transforms.ToTensor(), 
                                                     transforms.Normalize([0.485, 0.456, 0.406], 
                                                                          [0.229, 0.224, 0.225])]))
 
-val_ds = ImageFolder('/data/test',
-                      transform=transforms.Compose([transforms.Resize([125, 75]),
+val_ds = ImageFolder('data/test',
+                      transform=transforms.Compose([transforms.Resize([75, 75]),
                                                     transforms.ToTensor(), 
                                                     transforms.Normalize([0.485, 0.456, 0.406], 
                                                                          [0.229, 0.224, 0.225])]))
 
 
 # creating dataloaders
-batch_size = 32
+batch_size = 64
 
 training_loader = torch.utils.data.DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2)
 validation_loader = torch.utils.data.DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=2)
@@ -149,7 +130,7 @@ model.to(device) # send model to GPU
 
 # define some important parameters
 loss_fn = nn.CrossEntropyLoss()
-learn_rate = 0.001
+learn_rate = 3e-4
 optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
 
 
@@ -182,17 +163,19 @@ torch.save(model.state_dict(), 'finished')
 
 # plotting our results
 # plotting results from workshop 3
+plt.figure(1)
 plt.plot(training_losses, label="Training Losses")
 plt.plot(validation_losses, label="Validation Losses")
 plt.xlabel("Epoch")
 plt.ylabel("Loss")
 plt.title("Loss vs Epoch")
 plt.legend()
-plt.savefig("Losses.png")
+plt.savefig("figures/Losses_batch64.png")
 
+plt.figure(2)
 plt.plot(accuracies, label="Accuracy")
 plt.xlabel("Epoch")
 plt.ylabel("Accuracy")
 plt.title("Accuracy vs Epoch")
 plt.legend()
-plt.savefig("Accuracy.png")
+plt.savefig("figures/Accuracy_batch64.png")
